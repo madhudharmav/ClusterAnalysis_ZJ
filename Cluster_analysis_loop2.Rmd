@@ -1,0 +1,212 @@
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE,,include=FALSE}
+# TODO: caching the results
+# ------------------------------------------- #
+# CHANGE PARAMETERS HERE !
+#setwd("C:/Users/Madhu/Documents/Availability")
+#path_data <- paste(getwd(), 
+ #                  "/CW 31", 
+  #                 sep = "")
+days <- as.Date(c("2016-09-19","2016-09-25"))
+
+start_date<-strptime(days[1],format="%Y-%m-%d",tz="UTC")
+last_date<-strptime(days[2]+1,format="%Y-%m-%d",tz="UTC")
+# list of cities:
+#   "Berlin", "London"
+#city <-"London"
+
+# list of clusters: 
+#   "Nord Westen" "West", "Zentral", "North East",  "West (new)",  "Soho", "South", "Victoria", "City", "Southeast", "Camden" ,"Central"
+#cluster <- "Central"
+
+
+# ------------------------------------------- #
+# Load the data
+set.seed(1)
+library(rmongodb)
+source("make_customerbydate.R")
+source("make_idletime.R")
+source("make_geolocations.R")
+source("load_data.R")
+#load("df_all.dat")
+#source("plot_functions.R")
+# ###############
+# #to be used only in standalone
+# days <- c("2016-07-18","2016-07-24")
+# city <-"Berlin"
+# cluster<-"Nord Westen"
+
+#city <-"London"
+#clusters<-c("North East",  "West (new)",  "Soho", "South", "Victoria", "City", "Southeast", "Camden" ,"ALL")
+#cluster<- "ALL"
+# ##################
+# filter on the relevant city and/or district
+df_filtered <- df_all[df_all$City %in% city, ]
+df_filtered[df_filtered$Cluster=="Nord Westen","Cluster"]<-"EBERTY-ZENTRAL"
+df_filtered[df_filtered$Cluster=="Zentral","Cluster"]<-"EBERTY-ZENTRAL"
+df_filtered[as.Date(df_filtered$Time.DO,format = "%m/%d/%y")<as.Date("2016-09-16") 
+                    & (df_filtered$Cluster=="EBERTY-ZENTRAL"),"Cluster"]<-"Zentrallager"
+if(cluster!="ALL"){
+df_filtered <- df_filtered[df_filtered$Cluster %in% cluster, ]
+}
+
+```
+
+
+## `r cluster`
+
+#### Orders collected between the `r days[1]` and `r days[2]` in cluster `r cluster`
+
+- Density Estimation: a method to evaluate the orders
+- Shrink the clusters
+- Analysis of the relevant customers
+
+```{r,  echo=FALSE, message = FALSE, warning = FALSE,fig.width = 8, fig.height = 8 }
+
+
+# plot the earning map
+# plot_earning(df_filtered)
+#plot_earning_lf(df_filtered)
+    df_map <- mutate(df_filtered, 
+                 basket = cut(Earning, 
+                              breaks = c(1,20, 30, 40, 60, 1000), 
+                              labels = c("0:20", "21:30", "31:40", "41:60", "61:1000")))
+library(ggmap)
+
+whichmap <- get_map(location=c(mean(df_map$Long),mean(df_map$Lat)), zoom = 12,color="bw")
+Mapthewhichmap <- ggmap(whichmap, extent = "panel", legend = "bottomright")
+Mapthewhichmap +geom_point(aes(x = Long, y = Lat, colour = basket),size=5,data = df_map)+scale_color_discrete(name = "Basket of order in Euro")
+
+```
+
+
+### Density estimation
+
+#### Orders on the peripherie of the clusters are expensive
+
+Below is represented the density estimation of orders in the cluster `r cluster`. 
+Each line circles a fraction of the orders in the cluster (iso = 60% means 60% of the orders are located inside the contour).
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE,fig.width = 8, fig.height = 8}
+
+# plot the density map
+# plot_density_map(df_filtered)
+# TODO : select ISO with "seq(95, 50, -5)"
+#plot_density_map_lf(df_filtered)
+Mapthewhichmap+geom_density2d(aes(x = Long, y = Lat,colour = ..level..),size=2,data = df_map, contour =TRUE,show.legend = FALSE) + geom_point(aes(x = Long, y = Lat),size=1,data = df_map)
+#+scale_fill_gradient(low = "blue", high = "red")
+
+
+```
+
+
+### Statistics on the interactions
+  
+Here are some statistics on **all orders in the cluster**, to assess if there is a particular pattern:  
+```{r, echo=FALSE}
+df_filtered$Day <- as.factor(df_filtered$Day)
+df_filtered$Weekday <- factor(df_filtered$Weekday, 
+                             levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+df_filtered$Type <- as.factor(df_filtered$Type)
+df_filtered$From <- factor(df_filtered$From, 
+                       levels = c("7:00", "8:00", "9:00", "10:00", "11:00", "12:00", "13:00", 
+                                  "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", 
+                                  "20:00", "21:00", "22:00", "23:00"))
+# customers
+nb_cust_all <- length(unique(df_filtered[,"CustomerID"]))
+# travel time
+a_from_all <- round(mean(df_filtered$from_time)/60, 1)
+a_to_all <- round(mean(df_filtered$to_time)/60, 1)
+a_tot_all <- a_from_all + a_to_all
+# aov
+aov_all <- round(mean(df_filtered$Earning), 2)
+# timeslots
+x <- as.character(df_filtered$From)
+x <- as.numeric(unlist(strsplit(x, ":")))
+x <- x[x < 25 & x > 0]
+
+frac_timeslots <- rep(0, 3)
+frac_timeslots[1] <- length(x[x < 10])/length(x)*100
+frac_timeslots[3] <- length(x[x >= 18])/length(x)*100
+frac_timeslots[2] <- 100 - frac_timeslots[3] - frac_timeslots[1]
+frac_timeslots <- round(frac_timeslots, 1)
+
+# weekdays
+frac_weekday <- round(sapply(levels(df_filtered$Weekday), 
+                             FUN = function(x, y){sum(y$Weekday == x)/nrow(y)*100},
+                             y = df_filtered), 1)
+
+
+# knitr::kable(summary(df_filtered[, c("Day", "Weekday", 
+#                                  "From", "Type", "Earning", 
+#                                  "Status", "to_time", "from_time")]), 
+#              caption = "Summary Table")
+summary(df_filtered[, c("Day", "Weekday", "From", "Type", "Earning",  "to_time", "from_time")])
+
+```
+
+
+
+Here is presented the repartition of the interactions according to **weekdays** and **hours**:  
+```{r, echo=FALSE}
+# round(table(data.frame(Time = cut(x, breaks = c(0, 10, 17, 24)), 
+#                        Weekday = df_filtered$Weekday))/nrow(df_filtered)*100, 2)
+knitr::kable(round(table(data.frame(Time = cut(x, breaks = c(0, 10, 17, 24)), 
+                       Weekday = df_filtered$Weekday))/nrow(df_filtered)*100, 2), 
+             caption = "Repartition of the interactions for Weekdays and Time, in percentages of all the interactions")
+```
+
+
+### Summary
+
+**Customers**  
+
+In this cluster, there was `r nb_cust_all` customers, `r nrow(df_filtered)` interactions
+
+**Travel time**  
+
+| Interactions                          |Rest of the cluster|
+|:-------------------------------------:|:-----------------:|
+|   to go to the interaction (min)      |`r a_to_all`       |
+|   from the interaction  (min)         |`r a_from_all`     |
+|   total travelling time  (min)        | `r a_tot_all`     |
+
+**AOV**    
+- comarison of the AOV, on average, between the rejected interactions and all the cluster.
+
+| Interactions                    |Rest of the cluster|
+|:-------------------------------:|:-----------------:|
+|   AOV                           | `r aov_all`       |
+
+**Timeslots**  
+- among the `r nrow(df_filtered)` rejected interactions, the repartition for the timeslots is the following:
+
+| Interactions             |     Fractions (%)      |
+|:------------------------:|:----------------------:|
+|   before 10am (excl.)    | `r frac_timeslots[1]`  |
+|   between 10am-6pm       | `r frac_timeslots[2]`  |
+|   after 6pm (incl.)      | `r frac_timeslots[3]`  |
+
+**Weekdays**  
+- among the `r nrow(df_filtered)` rejected interactions, the repartition for the weekdays is the following:
+
+| Interactions  |     Fractions (%)       |
+|:-------------:|:-----------------------:|
+|   Monday      | `r frac_weekday[1]`     |
+|   Tuesday     | `r frac_weekday[2]`     |
+|   Wednesday   | `r frac_weekday[3]`     |
+|   Thursday    | `r frac_weekday[4]`     |
+|   Friday      | `r frac_weekday[5]`     |
+|   Saturday    | `r frac_weekday[6]`     |
+|   Sunday      | `r frac_weekday[7]`     |
+
+
+
+
+
+
+
+
+
+
+

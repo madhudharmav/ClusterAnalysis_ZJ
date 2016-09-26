@@ -1,0 +1,6 @@
+rmarkdown::render("Cluster_analysis_loop_parent_Berlin.Rmd")
+fname_b<-paste0("/home/madhu/workspace/shinyserver/clusteranalysis/Cluster_analysis_loop_parent_Berlin-",Sys.Date(),".html")
+file.rename("Cluster_analysis_loop_parent_Berlin.html",fname_b)
+rmarkdown::render("Cluster_analysis_loop_parent_London.Rmd")
+fname_l<-paste0("/home/madhu/workspace/shinyserver/clusteranalysis/Cluster_analysis_loop_parent_London-",Sys.Date(),".html")
+file.rename("Cluster_analysis_loop_parent_London.html",fname_l)

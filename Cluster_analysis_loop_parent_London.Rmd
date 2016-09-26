@@ -1,0 +1,38 @@
+
+---
+title: "Analysis of density of orders"
+author: "Madhu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+```{r  echo=FALSE, message=FALSE, warning=FALSE}
+
+library(knitr)
+
+```
+
+```{r echo=FALSE,  include=FALSE}
+
+city <-"London"
+clusters<-c("North East",  "West (new)",  "Soho", "South", "Victoria", "City", "Southeast", "Camden" ,"ALL")
+out <- NULL
+days <- as.Date(c("2016-09-19","2016-09-25"))
+start_date<-strptime(days[1],format="%Y-%m-%d",tz="UTC")
+last_date<-strptime(days[2]+1,format="%Y-%m-%d",tz="UTC")
+i1<-0
+for(cluster in clusters){
+  i1<-i1+1
+  print(cluster)
+  env<-new.env()
+  out <- c(out, knit_child('Cluster_analysis_loop2.Rmd', envir=env))
+  
+}
+```
+
+#  {.tabset .tabset-fade .tabset-pills}
+`r paste(out, collapse='\n')`
+
+
+
+
+
